@@ -1,0 +1,162 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: uid
+    // Fields:
+    //   - uid: string (required) - Firebase Auth UID
+    //   - displayName: string (required) - User's name
+    //   - email: string (required, email format) - User's email
+    //   - photoURL: string (optional) - Profile picture
+    //   - role: string (required, enum: citizen, officer, admin) - User's role
+    //   - points: number (required, >= 0) - Reward points
+    //   - ward: string (optional) - Assigned ward for officers
+    //   - createdAt: timestamp (required) - Profile creation time
+    //
+    // Collection: complaints
+    // Document ID: auto-generated
+    // Fields:
+    //   - authorUid: string (required) - Creator's UID
+    //   - authorName: string (required) - Creator's name
+    //   - category: string (required) - Issue category
+    //   - description: string (required, < 1000 chars) - Issue details
+    //   - location: string (required) - Address
+    //   - lat: number (required) - Latitude
+    //   - lng: number (required) - Longitude
+    //   - status: string (required, enum: Pending, In Progress, Resolved, Rejected)
+    //   - upvotes: number (required, >= 0) - Total upvotes
+    //   - commentsCount: number (required, >= 0) - Total comments
+    //   - photoUrl: string (optional) - Issue photo
+    //   - createdAt: timestamp (required) - Filed time
+    //   - updatedAt: timestamp (required) - Last update time
+    //
+    // Collection: complaints/{complaintId}/upvotes
+    // Document ID: uid
+    // Fields:
+    //   - uid: string (required) - Upvoter's UID
+    //   - createdAt: timestamp (required) - Upvote time
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "dsinghal7834@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isOfficer() {
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'officer';
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'displayName', 'email', 'photoURL', 'role', 'points', 'ward', 'createdAt']) &&
+             data.uid == request.auth.uid &&
+             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
+             isValidEmail(data.email) &&
+             data.role in ['citizen', 'officer', 'admin'] &&
+             data.points is number && data.points >= 0;
+    }
+
+    function isValidComplaint(data) {
+      return hasOnlyAllowedFields(['id', 'authorUid', 'reportedByUid', 'authorName', 'isAnonymous', 'category', 'description', 'location', 'lat', 'lng', 'status', 'upvotes', 'commentsCount', 'photoUrl', 'createdAt', 'updatedAt', 'officerUid', 'officerName']) &&
+             data.reportedByUid == request.auth.uid &&
+             (data.isAnonymous == true ? data.authorUid == 'anonymous' : data.authorUid == request.auth.uid) &&
+             data.authorName is string && data.authorName.size() > 0 && data.authorName.size() < 100 &&
+             data.description is string && data.description.size() > 0 && data.description.size() < 1000 &&
+             data.status in ['Pending', 'In Progress', 'Resolved', 'Rejected'] &&
+             data.upvotes is number && data.upvotes >= 0 &&
+             data.commentsCount is number && data.commentsCount >= 0;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    // User profiles
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'citizen';
+      allow update: if isAuthenticated() && (
+        (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role) ||
+        isAdmin() ||
+        (isOfficer() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points']))
+      );
+
+      // Points history
+      match /points_history/{historyId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) &&
+                      request.resource.data.keys().hasAll(['amount', 'type', 'reason', 'createdAt']) &&
+                      request.resource.data.type in ['earn', 'redeem'];
+      }
+    }
+
+    // Complaints
+    match /complaints/{complaintId} {
+      allow read: if true; // Publicly viewable
+      allow create: if isAuthenticated() && isValidComplaint(request.resource.data) && request.resource.data.status == 'Pending';
+      allow update: if isAuthenticated() && (
+        (request.auth.uid == resource.data.reportedByUid && isValidComplaint(request.resource.data) && request.resource.data.status == resource.data.status) ||
+        isOfficer() ||
+        isAdmin() ||
+        // Allow upvote increments specifically
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes']) &&
+         math.abs(request.resource.data.upvotes - resource.data.upvotes) == 1 &&
+         getAfter(/databases/$(database)/documents/complaints/$(complaintId)/upvotes/$(request.auth.uid)) != null)
+      );
+    }
+
+    // Upvotes subcollection
+    match /complaints/{complaintId}/upvotes/{userId} {
+      allow read: if true;
+      allow create: if isOwner(userId) &&
+                    request.resource.data.uid == request.auth.uid &&
+                    !exists(/databases/$(database)/documents/complaints/$(complaintId)/upvotes/$(request.auth.uid));
+      allow delete: if isOwner(userId);
+    }
+
+    // Comments
+    match /complaints/{complaintId}/comments/{commentId} {
+      allow read: if true;
+      allow create: if isAuthenticated() &&
+                    request.resource.data.authorUid == request.auth.uid &&
+                    request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() < 500;
+      allow delete: if isAuthenticated() && (request.auth.uid == resource.data.authorUid || isAdmin() || isOfficer());
+    }
+
+    // Redemptions
+    match /redemptions/{redemptionId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.uid || isAdmin());
+      allow create: if isAuthenticated() &&
+                    request.resource.data.uid == request.auth.uid &&
+                    request.resource.data.pointsSpent is number &&
+                    getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.points >= 0;
+    }
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores citizen and officer profile information, including points and roles.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique identifier from Firebase Auth" },
+        "displayName": { "type": "string", "description": "User's full name" },
+        "email": { "type": "string", "format": "email", "description": "User's email address" },
+        "photoURL": { "type": "string", "description": "URL to user's profile picture" },
+        "role": { "type": "string", "enum": ["citizen", "officer", "admin"], "description": "User's role in the system" },
+        "points": { "type": "integer", "description": "Total reward points earned by the citizen" },
+        "ward": { "type": "string", "description": "Assigned ward for officers" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the profile was created" }
+      },
+      "required": ["uid", "displayName", "email", "role", "points"]
+    },
+    "Complaint": {
+      "title": "Civic Complaint",
+      "description": "Represents a civic issue reported by a citizen.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique complaint ID" },
+        "authorUid": { "type": "string", "description": "UID of the citizen who filed the report" },
+        "authorName": { "type": "string", "description": "Name of the citizen who filed the report" },
+        "category": { "type": "string", "description": "Category of the issue (e.g., Pothole, Garbage)" },
+        "description": { "type": "string", "description": "Detailed description of the issue" },
+        "location": { "type": "string", "description": "Human-readable address or landmark" },
+        "lat": { "type": "number", "description": "Latitude coordinate" },
+        "lng": { "type": "number", "description": "Longitude coordinate" },
+        "status": { "type": "string", "enum": ["Pending", "In Progress", "Resolved", "Rejected"], "description": "Current status of the complaint" },
+        "upvotes": { "type": "integer", "description": "Total number of upvotes" },
+        "commentsCount": { "type": "integer", "description": "Total number of comments" },
+        "photoUrl": { "type": "string", "description": "URL to the uploaded photo of the issue" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when filed" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp of last update" },
+        "resolvedAt": { "type": "string", "format": "date-time", "description": "Timestamp when resolved" },
+        "officerUid": { "type": "string", "description": "UID of the officer assigned to this case" },
+        "officerName": { "type": "string", "description": "Name of the officer assigned to this case" }
+      },
+      "required": ["authorUid", "category", "description", "location", "lat", "lng", "status", "upvotes", "createdAt"]
+    },
+    "Upvote": {
+      "title": "Complaint Upvote",
+      "description": "Tracks which users have upvoted which complaints to prevent duplicates.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "UID of the user who upvoted" },
+        "complaintId": { "type": "string", "description": "ID of the complaint being upvoted" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the upvote occurred" }
+      },
+      "required": ["uid", "complaintId", "createdAt"]
+    },
+    "Comment": {
+      "title": "Complaint Comment",
+      "description": "Discussion on a specific complaint.",
+      "type": "object",
+      "properties": {
+        "complaintId": { "type": "string", "description": "ID of the parent complaint" },
+        "authorUid": { "type": "string", "description": "UID of the commenter" },
+        "authorName": { "type": "string", "description": "Name of the commenter" },
+        "text": { "type": "string", "description": "Content of the comment" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the comment was posted" }
+      },
+      "required": ["complaintId", "authorUid", "authorName", "text", "createdAt"]
+    },
+    "Redemption": {
+      "title": "Reward Redemption",
+      "description": "Tracks when a user redeems points for a reward.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "UID of the user" },
+        "rewardId": { "type": "integer", "description": "ID of the reward item" },
+        "rewardName": { "type": "string", "description": "Name of the reward" },
+        "pointsSpent": { "type": "integer", "description": "Points deducted" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When redeemed" }
+      },
+      "required": ["uid", "rewardId", "rewardName", "pointsSpent", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/complaints/{complaintId}": {
+      "schema": "Complaint",
+      "description": "Civic complaints"
+    },
+    "/complaints/{complaintId}/upvotes/{uid}": {
+      "schema": "Upvote",
+      "description": "Upvotes for a complaint (using uid as doc ID for uniqueness)"
+    },
+    "/complaints/{complaintId}/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Comments on a complaint"
+    },
+    "/redemptions/{redemptionId}": {
+      "schema": "Redemption",
+      "description": "Point redemptions"
+    }
+  }
+}

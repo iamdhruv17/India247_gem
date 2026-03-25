@@ -1,0 +1,16 @@
+{
+  "name": "India247",
+  "short_name": "India247",
+  "description": "Civic complaint platform for Indian citizens.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F5F5F0",
+  "theme_color": "#E8541A",
+  "icons": [
+    {
+      "src": "https://ais-dev-3oidgcxhnwdy3i5yosswzv-755664907639.asia-southeast1.run.app/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}
